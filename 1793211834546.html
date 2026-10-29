@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<script type="application/json" id="cowork-artifact-meta">
+{
+  "name": "Lowes Payout Calculator",
+  "schemaVersion": 1,
+  "description": "Lowe's Payout Calculator — agents enter any of Customer Price, Base Payout, Incentive, or Total Payout; the calculator derives the rest and maps the amounts to the exact Maintain and Admin payout entry fields per the Manual Fulfillment playbook."
+}
+</script>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lowe's Payout Calculator</title>
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: #f6f7f9; color: #1a202c; padding: 24px; line-height: 1.45;
+  }
+  .wrap { max-width: 760px; margin: 0 auto; }
+  h1 { font-size: 22px; margin-bottom: 4px; }
+  .sub { color: #5a6472; font-size: 13px; margin-bottom: 20px; }
+  .card {
+    background: #fff; border: 1px solid #e2e6ea; border-radius: 10px;
+    padding: 18px 20px; margin-bottom: 16px;
+  }
+  .card h2 { font-size: 15px; margin-bottom: 12px; }
+  .inputs { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 560px) { .inputs { grid-template-columns: 1fr; } }
+  label { display: block; font-size: 12px; font-weight: 600; color: #3b4452; margin-bottom: 4px; }
+  .hint { font-weight: 400; color: #8a93a0; }
+  .field { position: relative; }
+  .field .dollar {
+    position: absolute; left: 10px; top: 50%; transform: translateY(-50%);
+    color: #8a93a0; font-size: 14px; pointer-events: none;
+  }
+  input[type="text"] {
+    width: 100%; padding: 9px 10px 9px 24px; font-size: 15px;
+    border: 1.5px solid #cfd6dd; border-radius: 7px; background: #fff; color: #1a202c;
+  }
+  input[type="text"]:focus { outline: none; border-color: #2a7de1; }
+  input.derived { background: #eef6ff; border-color: #9ec7f0; color: #1456a0; font-weight: 600; }
+  input.conflict { border-color: #d64545; background: #fdf2f2; }
+  .tag {
+    display: inline-block; font-size: 10px; font-weight: 700; letter-spacing: .04em;
+    text-transform: uppercase; border-radius: 4px; padding: 1px 6px; margin-left: 6px; vertical-align: 1px;
+  }
+  .tag.calc { background: #e3f0fd; color: #1456a0; }
+  .btnrow { margin-top: 14px; }
+  button {
+    font-size: 13px; padding: 7px 14px; border-radius: 7px; border: 1px solid #cfd6dd;
+    background: #fff; color: #3b4452; cursor: pointer;
+  }
+  button:hover { background: #f0f3f6; }
+  .msg { margin-top: 12px; font-size: 13px; border-radius: 7px; padding: 10px 12px; display: none; }
+  .msg.show { display: block; }
+  .msg.warn { background: #fef6e7; border: 1px solid #f0d48a; color: #7a5a10; }
+  .msg.err  { background: #fdf2f2; border: 1px solid #e8a9a9; color: #9b2c2c; }
+  .msg.info { background: #eef6ff; border: 1px solid #b9d7f3; color: #1456a0; }
+  .results { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 560px) { .results { grid-template-columns: 1fr; } }
+  .panel { background: #fff; border: 1px solid #e2e6ea; border-radius: 10px; padding: 16px 18px; }
+  .panel h3 { font-size: 14px; margin-bottom: 2px; }
+  .panel .where { font-size: 12px; color: #8a93a0; margin-bottom: 12px; }
+  .row { display: flex; justify-content: space-between; align-items: baseline; padding: 8px 0; border-bottom: 1px dashed #e8ecef; }
+  .row:last-child { border-bottom: none; }
+  .row .fname { font-size: 13px; color: #3b4452; }
+  .row .fval { font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .row .fval.empty { color: #b7bec7; font-weight: 400; font-size: 13px; }
+  .maintain h3 { color: #6b3fa0; }
+  .maintain { border-top: 3px solid #6b3fa0; }
+  .admin h3 { color: #0f766e; }
+  .admin { border-top: 3px solid #0f766e; }
+  .note { font-size: 12px; color: #5a6472; background: #fff; border: 1px solid #e2e6ea; border-radius: 10px; padding: 12px 16px; margin-top: 4px; }
+  .note b { color: #3b4452; }
+  .formulas { font-size: 12px; color: #8a93a0; margin-top: 14px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Lowe's Payout Calculator</h1>
+  <div class="sub">Enter any amounts you have from the job — the rest are calculated automatically, then mapped to the exact Maintain and Admin fields.</div>
+
+  <div class="card">
+    <h2>Job amounts (enter what you know)</h2>
+    <div class="inputs">
+      <div>
+        <label for="cp">Customer Price <span class="hint">— what the customer paid Lowe's</span><span id="cp-tag"></span></label>
+        <div class="field"><span class="dollar">$</span><input type="text" id="cp" inputmode="decimal" placeholder="e.g. 124.00"></div>
+      </div>
+      <div>
+        <label for="bp">Base Payout <span class="hint">— Customer Price − Take</span><span id="bp-tag"></span></label>
+        <div class="field"><span class="dollar">$</span><input type="text" id="bp" inputmode="decimal" placeholder="e.g. 103.00"></div>
+      </div>
+      <div>
+        <label for="inc">Incentive <span class="hint">— extra added by Product (0 if none)</span><span id="inc-tag"></span></label>
+        <div class="field"><span class="dollar">$</span><input type="text" id="inc" inputmode="decimal" placeholder="e.g. 0.00"></div>
+      </div>
+      <div>
+        <label for="tp">Total Payout <span class="hint">— Base Payout + Incentive</span><span id="tp-tag"></span></label>
+        <div class="field"><span class="dollar">$</span><input type="text" id="tp" inputmode="decimal" placeholder="e.g. 103.00"></div>
+      </div>
+    </div>
+    <div class="btnrow"><button id="clear">Clear all</button></div>
+    <div class="msg" id="msg"></div>
+  </div>
+
+  <div class="results">
+    <div class="panel maintain">
+      <h3>Maintain — Payout fields</h3>
+      <div class="where">Enter these in the Maintain payout section</div>
+      <div class="row"><span class="fname">1. Payout Amount</span><span class="fval" id="m1">—</span></div>
+      <div class="row"><span class="fname">2. Take Amount</span><span class="fval" id="m2">—</span></div>
+      <div class="row"><span class="fname">3. Additional Incentive</span><span class="fval" id="m3">—</span></div>
+    </div>
+    <div class="panel admin">
+      <h3>Admin — Project payout fields</h3>
+      <div class="where">Enter these in the Admin project payout details</div>
+      <div class="row"><span class="fname">1. Job Amount (Customer Total)</span><span class="fval" id="a1">—</span></div>
+      <div class="row"><span class="fname">2. Take Amount</span><span class="fval" id="a2">—</span></div>
+      <div class="row"><span class="fname">3. Additional Incentive Amount</span><span class="fval" id="a3">—</span></div>
+    </div>
+  </div>
+
+  <div class="note" style="margin-top:16px">
+    <b>Field mapping:</b>
+    Maintain <b>Payout Amount</b> = Total Payout (Base Payout + Incentive), with the incentive also entered in <b>Additional Incentive</b>.
+    Take Amount (both systems) = Customer Price − Base Payout.
+    Admin <b>Job Amount (Customer Total)</b> = Customer Price.
+    Enter all amounts with dollars <i>and</i> cents (e.g. $120.00, not $120).
+    <div class="formulas">Formulas: Base Payout = Customer Price − Take · Total Payout = Base Payout + Incentive</div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var F = ['cp', 'bp', 'inc', 'tp'];
+  var el = {}; F.forEach(function (k) { el[k] = document.getElementById(k); });
+  var msg = document.getElementById('msg');
+  var touched = {}; // which fields the user actually typed
+
+  function parse(v) {
+    if (v == null) return null;
+    v = String(v).replace(/[$,\s]/g, '');
+    if (v === '') return null;
+    var n = Number(v);
+    return isFinite(n) ? n : NaN;
+  }
+  function fmt(n) {
+    return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  function setOut(id, val) {
+    var e = document.getElementById(id);
+    if (val == null) { e.textContent = 'need more info'; e.className = 'fval empty'; }
+    else { e.textContent = fmt(val); e.className = 'fval'; }
+  }
+  function setMsg(kind, text) {
+    if (!text) { msg.className = 'msg'; msg.textContent = ''; return; }
+    msg.className = 'msg show ' + kind; msg.innerHTML = text;
+  }
+  function tag(k, on) {
+    var t = document.getElementById(k + '-tag');
+    t.innerHTML = on ? '<span class="tag calc">calculated</span>' : '';
+  }
+
+  function recalc() {
+    // gather user-entered values only
+    var v = {}, bad = false;
+    F.forEach(function (k) {
+      el[k].classList.remove('derived', 'conflict');
+      tag(k, false);
+      if (touched[k]) {
+        var n = parse(el[k].value);
+        if (n !== null && isNaN(n)) { el[k].classList.add('conflict'); bad = true; }
+        else if (n !== null && n < 0) { el[k].classList.add('conflict'); bad = true; }
+        else v[k] = n; // may be null if cleared
+      } else {
+        v[k] = null;
+      }
+    });
+    if (bad) { setMsg('err', 'One of the amounts isn’t a valid dollar figure. Use numbers only, e.g. 124.00.'); clearOutputs(); return; }
+
+    var cp = v.cp, bp = v.bp, inc = v.inc, tp = v.tp;
+    var notes = [];
+
+    // iterate: derive what we can from Total = Base + Incentive
+    for (var i = 0; i < 3; i++) {
+      if (tp == null && bp != null && inc != null) tp = bp + inc;
+      if (bp == null && tp != null && inc != null) bp = tp - inc;
+      if (inc == null && tp != null && bp != null) inc = tp - bp;
+    }
+    // sensible default: if incentive still unknown but we have exactly one of bp/tp, assume no incentive
+    var assumedZeroInc = false;
+    if (inc == null && (bp != null || tp != null)) {
+      inc = 0; assumedZeroInc = true;
+      if (tp == null && bp != null) tp = bp;
+      if (bp == null && tp != null) bp = tp;
+    }
+
+    // consistency checks on user-entered trio
+    var conflict = false;
+    if (v.tp != null && v.bp != null && v.inc != null && Math.abs(v.tp - (v.bp + v.inc)) > 0.005) {
+      conflict = true;
+      ['tp', 'bp', 'inc'].forEach(function (k) { el[k].classList.add('conflict'); });
+      setMsg('err', '<b>These amounts don’t add up:</b> Total Payout should equal Base Payout + Incentive (' + fmt(v.bp) + ' + ' + fmt(v.inc) + ' = ' + fmt(v.bp + v.inc) + ', not ' + fmt(v.tp) + '). Double-check the job’s payout info.');
+    }
+    if (!conflict && cp != null && bp != null && bp > cp + 0.005) {
+      el.bp.classList.add('conflict'); el.cp.classList.add('conflict');
+      setMsg('warn', '<b>Heads up:</b> Base Payout (' + fmt(bp) + ') is higher than Customer Price (' + fmt(cp) + '), which would make the Take negative. Double-check the amounts — if this is intentional (approved exception), confirm with your SME before entering.');
+    }
+
+    var take = (cp != null && bp != null) ? cp - bp : null;
+    var negTake = take != null && take < -0.005;
+
+    // reflect derived values back into inputs (only untouched ones)
+    var derived = { cp: cp, bp: bp, inc: inc, tp: tp };
+    F.forEach(function (k) {
+      if (!touched[k] && derived[k] != null) {
+        el[k].value = derived[k].toFixed(2);
+        el[k].classList.add('derived');
+        tag(k, true);
+      } else if (!touched[k]) {
+        el[k].value = '';
+      }
+    });
+
+    // outputs — Maintain Payout Amount = Total Payout (Base + Incentive)
+    setOut('m1', tp);
+    setOut('m2', negTake ? null : take);
+    setOut('m3', inc);
+    setOut('a1', cp);
+    setOut('a2', negTake ? null : take);
+    setOut('a3', inc);
+
+    if (!conflict && !negTake) {
+      var m = [];
+      if (assumedZeroInc && (v.bp != null || v.tp != null)) m.push('No incentive entered, so it’s assumed to be <b>$0.00</b> — if this job has an incentive, add it above.');
+      if (cp == null && (bp != null)) m.push('Enter the <b>Customer Price</b> to get the Take Amount and the Admin Job Amount.');
+      if (bp == null && tp == null) m.push('Enter at least the <b>Base Payout</b> or <b>Total Payout</b> to calculate the payout fields.');
+      if (m.length) setMsg('info', m.join('<br>')); else setMsg(null, null);
+    }
+  }
+
+  function clearOutputs() {
+    ['m1', 'm2', 'm3', 'a1', 'a2', 'a3'].forEach(function (id) { setOut(id, null); });
+  }
+
+  F.forEach(function (k) {
+    el[k].addEventListener('input', function () {
+      touched[k] = el[k].value.trim() !== '';
+      recalc();
+    });
+  });
+  document.getElementById('clear').addEventListener('click', function () {
+    F.forEach(function (k) { el[k].value = ''; touched[k] = false; el[k].classList.remove('derived', 'conflict'); tag(k, false); });
+    clearOutputs(); setMsg(null, null);
+    // reset output text to dashes
+    ['m1','m2','m3','a1','a2','a3'].forEach(function (id) { var e = document.getElementById(id); e.textContent = '—'; e.className = 'fval empty'; });
+  });
+  clearOutputs();
+  ['m1','m2','m3','a1','a2','a3'].forEach(function (id) { var e = document.getElementById(id); e.textContent = '—'; e.className = 'fval empty'; });
+})();
+</script>
+</body>
+</html>
